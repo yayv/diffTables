@@ -11,6 +11,32 @@ $oTable = [
 	"options"=>[],
 ];
 
+// 检查是否有不支持的SQL语句
+function checkSQLFile($fSQL)
+{
+	while( !feof($fSQL) ){
+		$strTable = pickupOneTable($fSQL);
+		if($strTable){
+			$oT = parseCreateSql($strTable);
+			echo $oT['name'],"\n";
+		}
+		else
+		{
+			echo $strTable,"\n";
+			break;
+		}
+/*
+		$s = trim($strTable);
+		if($s=='') 
+			die('file end');
+
+		$aT = parseCreateSql($strTable);
+		if(!$aT)
+			break;
+*/			
+	}
+}
+
 
 function pickupOneTable($file)
 {
@@ -20,7 +46,7 @@ function pickupOneTable($file)
 	$line = '';
 
 	$line = fgets($file);
-	
+
 	while( !$inCreate && !feof($file) )
 	{
 		$ret = preg_match("/CREATE[ \t]*TABLE.*/", $line, $matches1);
@@ -29,6 +55,8 @@ function pickupOneTable($file)
 			break;
 		}
 		$line = fgets($file);
+		if(feof($file))
+			return false;
 	}
 
 	while($inCreate)
@@ -72,7 +100,8 @@ function parseCreateSql($str)
 		echo $strSql;
 		print_r($matches);
 		echo "=========\n";
-		return ;
+
+		return false;
 	}
 	foreach(explode(' ', $matches[3]) as $v)
 	{
@@ -85,7 +114,7 @@ function parseCreateSql($str)
 		}
 	}
 
-	$oTable['name'] = trim($matches[1],' \t`');
+	$oTable['name'] = trim($matches[1]," \t`");
 
 	$columns = explode(",", $matches[2]);
 	foreach($columns as $v)
@@ -123,16 +152,20 @@ $right = fopen($rightFile,"r");
 $i = 0 ;
 
 $ltable = pickupOneTable($left);
+if(!$ltable){
+	print_r($ltable);
+	return ;
+}
 $aT = parseCreateSql($ltable);
 
 $rtable = pickupOneTable($right);
-$bT = parseCreateSql($ltable);
-
-while( !feof($left) ){
-	$ltable = pickupOneTable($left);
-	$aT = parseCreateSql($ltable);
-	print_r($aT);	
+if(!$rtable){
+	print_r($rtable);
+	return ;
 }
+$bT = parseCreateSql($rtable);
+
+checkSQLFile($left);
 
 /*
 while( !feof($left) || !feof($right) )
