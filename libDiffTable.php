@@ -4,36 +4,273 @@ define("E_NotSameTable", 1);
 
 $oTable = [
 	"name"=>"",
-	"columns"=>[
-		"name"=>"",
-		"type"=>"",
-	],
+	"columns"=>[],
+	"indexes"=>[],
 	"options"=>[],
 ];
+
+class ColumnParser
+{
+	private $_columns;
+	private $_offset ;
+	private $_max ;
+	private $_debug;
+
+	private $_columnOption;
+
+	public function __construct($line)
+	{
+		$this->_KEY = ['KEY',"INDEX","FULLTEXT","CONSTRAINT",'PRIMARY','UNIQUE',"FOREIGN"];
+
+		$this->_offset = 0;
+		$this->_columns = $line ;
+		$this->_max = strlen($line);
+		$this->_debug = false;
+	}
+
+	public function isEnd()
+	{
+		return $this->_max<=$this->_offset;
+	}
+
+	public function popColumn()
+	{
+		$debug = false;
+		$this->_columnOption = [];
+
+		$column = ['name'=>'','dataType'=>'','options'=>'','columnType'=>'column'];
+		$this->skipBlank();
+		$column['name'] = $this->popName();
+
+if($column['name']=='areaId')
+	$this->_debug = true;
+
+		if(in_array($column['name'],$this->_KEY))
+		{
+			if($debug) die('a1');
+			$this->skipBlank();
+			$column['options'] = $this->popIndex($column['name']);
+			$column['columnType']='index';
+			$column['name']='';
+			return $column;
+		}
+		else
+		{
+			$this->skipBlank();
+
+			$column['dataType'] = $this->popDataType();
+#if($this->_debug) echo "before:",$column['dataType'],"\n";			
+			$this->skipBlank();
+			$word = $this->popColumnOptions();
+
+			while($word)
+			{
+				$column['options'] .= ' '.$word;
+				$this->skipBlank();	
+				if(strcasecmp($word,'COMMENT')==0)
+				{
+					$comment = $this->popString();
+					$column['options'] .= ' '.$comment;
+					$this->skipBlank();	
+				}
+				if(strcasecmp($word,'DEFAULT')==0)
+				{
+					$comment = $this->popString();
+					$column['options'] .= ' '.$comment;
+					$this->skipBlank();	
+				}
+			
+				$word = $this->popColumnOptions();
+			}
+#if($this->_debug) echo "after:",$word,"\n";
+
+#if($this->_debug) die('for test');
+			return $column;
+		}
+	}
+
+	public function skipBlank()
+	{
+		$ret = preg_match("/[ \t\n]*/",$this->_columns,$matches,0,$this->_offset);
+		if($ret)
+		{
+			$this->_offset += strlen($matches[0]);
+		}
+		
+		return $ret;
+	}
+
+	public function skipCommas()
+	{
+		$ret = preg_match("/[ \t\n]*,[ \t\n]*/",$this->_columns,$matches,0,$this->_offset);
+		if($ret)
+		{
+			$this->_offset += strlen($matches[0]);
+		}
+		
+		return $ret;
+	}
+
+	public function popName()
+	{
+		$ret = preg_match("/[a-zA-Z0-9_`]*/", $this->_columns, $matches, 0, $this->_offset);
+		if($ret)
+		{
+			$this->_offset+=strlen($matches[0]);
+			return trim($matches[0],"`");
+		}	
+		else
+			return false;
+	}
+
+	public function popDataType()
+	{
+		$type = '';
+		$len  = '';
+
+		$ret = preg_match("/([a-zA-Z]*)/", $this->_columns, $matches, 0, $this->_offset);
+		if($ret)
+		{
+			$type = $matches[0];
+			$this->_offset+=strlen($matches[0]);
+		}
+
+		$ret = preg_match("/[ \t\n]*(\([0-9,]*\))?/",$this->_columns, $matches, 0, $this->_offset);
+		if($ret)
+		{
+			$len = $matches[0];
+			$this->_offset+=strlen($matches[0]);
+		}
+
+		return $type.$len;
+	}
+
+	public function popOption()
+	{
+
+	}
+
+	public function popString()
+	{
+		$matches = [];
+		
+		$s = substr($this->_columns,$this->_offset,1);
+
+		if($s=="'")
+			$ret = preg_match("/'[^\']*'/", $this->_columns, $matches, 0, $this->_offset);
+		else if($s=="\"")
+			$ret = preg_match("/\".*\"/", $this->_columns, $matches, 0, $this->_offset);
+		else
+			return '';
+
+		#echo substr($this->_columns,$this->_offset,10);
+		#print_r($matches);
+		$this->_offset += strlen($matches[0]);
+
+		return $matches[0];
+	}
+
+	public function popColumnOptions()
+	{
+		$ret = preg_match("/([a-zA-Z0-9_])*/", $this->_columns,$matches, 0, $this->_offset);
+		if($ret)
+		{
+			$this->_offset += strlen($matches[0]);
+			return $matches[0];
+		}
+
+		return false;
+	}
+
+	public function popIndexOption()
+	{	
+		$ret = preg_match("/\([a-zA-Z0-9 `,]*\)/", $this->_columns, $matches, 0, $this->_offset);
+		if($ret)
+		{
+			$this->_offset += strlen($matches[0]);
+			return $matches[0];
+		}
+		else
+			return '';
+	}
+
+	public function popIndex($firstWord)
+	{
+		$indexLine = $firstWord;
+		$this->skipBlank();
+		$s = substr($this->_columns, $this->_offset,1);
+		$e = true;
+		while($e)
+		{
+			switch($s)
+			{
+				case ' ':
+				case "\t":
+				case "\n":
+					$this->skipBlank();
+					break;
+				case '`':
+					$name = $this->popName();
+					$indexLine .= '`'.$name.'`';
+					break;
+				case '(':
+					$options = $this->popIndexOption();
+					$indexLine .= $options;
+					break;
+				case ',':
+					$e=false;
+					break;
+				default:
+					$word = $this->popColumnOptions();
+					$indexLine .= ' '.$word;
+					break;
+			}
+
+			$this->skipBlank();
+			if($this->_offset>=$this->_max)
+				break;
+			$s = substr($this->_columns, $this->_offset,1);
+		}	
+
+		return $indexLine;
+	}
+
+	public function popDefinition()
+	{
+
+	}
+}
+
+class TableParser
+{
+	private $_name;
+	private $_string;
+	public function __contruct($name, $allString)
+	{
+		$this->_name = $name;
+	}
+
+}
 
 // 检查是否有不支持的SQL语句
 function checkSQLFile($fSQL)
 {
+	$i=0;
 	while( !feof($fSQL) ){
 		$strTable = pickupOneTable($fSQL);
+		echo $strTable,"\n\n\n";
 		if($strTable){
 			$oT = parseCreateSql($strTable);
-			echo $oT['name'],"\n";
+			#echo $oT['name'],"\n";
 		}
 		else
 		{
-			echo $strTable,"\n";
+			#echo $strTable,"\n";
 			break;
 		}
-/*
-		$s = trim($strTable);
-		if($s=='') 
-			die('file end');
-
-		$aT = parseCreateSql($strTable);
-		if(!$aT)
+		$i++;
+		if($i>10)
 			break;
-*/			
 	}
 }
 
@@ -92,45 +329,68 @@ function parseCreateSql($str)
 
 	$strSql = str_replace("\n","",$str);
 	$testSql = $strSql;
-	$ret = preg_match("/CREATE TABLE ([`_a-zA-Z0-9]*) \((.*)\)(.*);/", $testSql, $matches);
+	$ret = preg_match("/[ \t\n]*CREATE TABLE ([`_a-zA-Z0-9]*) \((.*)\)(.*);/", $testSql, $matches);
 	if(!$ret)
 	{
-		echo "=========\n";
+		echo "=== Parse Create SQL failure ======\n";
 		print_r($ret);
-		echo $strSql;
+		echo $testSql;
 		print_r($matches);
 		echo "=========\n";
 
 		return false;
 	}
-	foreach(explode(' ', $matches[3]) as $v)
+
+	$oTable['name'] = trim($matches[1]," \t`");
+
+	$oTable['options'] = parseOptions($matches[3]);
+
+	// parse Keys and columns
+	list($oTable['columns'],$oTable['indexes']) = parseColumnsAndIndexes($matches[2]);
+
+	return $oTable;
+}
+
+function parseOptions($line)
+{
+	$oOption = [];
+
+	// parse options
+	foreach(explode(' ', trim($line)) as $v)
 	{
 		$ret = preg_match("/[ \t]*([a-zA-Z0-9]*)(=([a-zA-Z0-9]*))?/",$v,$matchoption);
 		if($ret){
 			if(isset($matchoption[3]))
-				$oTable['options'][$matchoption[1]] = $matchoption[3];
+				$oOption[$matchoption[1]] = $matchoption[3];
 			else
-				$oTable['options'][$matchoption[1]]='';
+				$oOption[$matchoption[1]] = '';
 		}
 	}
 
-	$oTable['name'] = trim($matches[1]," \t`");
+	return $oOption;
+}
 
-	$columns = explode(",", $matches[2]);
-	foreach($columns as $v)
+function parseColumnsAndIndexes($line)
+{
+	$columns = [];
+	$indexes = [];
+
+	$cp = new ColumnParser($line);
+
+	while(!$cp->isEnd())
 	{
-		$ret = preg_match("/.*KEY.*/",$v,$matches);
-		if($ret)
-		{
-			$oTable['indexes'][] = ['detail'=>$matches[0]];
-		}
+		$oC = $cp->popColumn();
+		print_r($oC);
+		if($oC['columnType']=='column')
+			$columns[] = $oC;
 		else
-		{
-			$oTable['columns'][] = ['detail'=>$v];	
-		}
-	}
+			$indexes[] = $oC;
 
-	return $oTable;
+		$cp->skipCommas();		
+	}
+	
+	//print_r([$columns,$indexes]);
+	return [$columns,$indexes];
 }
 
 function diffOneTable($aT, $bT)
@@ -138,7 +398,12 @@ function diffOneTable($aT, $bT)
 	if($aT['name']!=$bT['name'])
 		return E_NotSameTable;
 
-	$sql = "";
+	// 1. check columns
+
+	// 2. check indexes
+
+	// 3. check options
+
 
 	return $sql;
 }
@@ -158,14 +423,16 @@ if(!$ltable){
 }
 $aT = parseCreateSql($ltable);
 
+/*
 $rtable = pickupOneTable($right);
 if(!$rtable){
 	print_r($rtable);
 	return ;
 }
 $bT = parseCreateSql($rtable);
-
-checkSQLFile($left);
+*/
+#checkSQLFile($left);
+#checkSQLFile($right);
 
 /*
 while( !feof($left) || !feof($right) )
