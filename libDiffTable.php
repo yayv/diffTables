@@ -28,6 +28,16 @@ class ColumnParser
 		$this->_debug = false;
 	}
 
+	public function search()
+	{
+		echo 'in search';
+	}
+
+	public function hasColumn($name)
+	{
+		
+	}
+
 	public function isEnd()
 	{
 		return $this->_max<=$this->_offset;
@@ -42,24 +52,18 @@ class ColumnParser
 		$this->skipBlank();
 		$column['name'] = $this->popName();
 
-if($column['name']=='areaId')
-	$this->_debug = true;
-
 		if(in_array($column['name'],$this->_KEY))
 		{
-			if($debug) die('a1');
 			$this->skipBlank();
 			$column['options'] = $this->popIndex($column['name']);
 			$column['columnType']='index';
-			$column['name']='';
+			$column['name']=$this->_tmpname;
 			return $column;
 		}
 		else
 		{
 			$this->skipBlank();
-
 			$column['dataType'] = $this->popDataType();
-#if($this->_debug) echo "before:",$column['dataType'],"\n";			
 			$this->skipBlank();
 			$word = $this->popColumnOptions();
 
@@ -82,9 +86,7 @@ if($column['name']=='areaId')
 			
 				$word = $this->popColumnOptions();
 			}
-#if($this->_debug) echo "after:",$word,"\n";
 
-#if($this->_debug) die('for test');
 			return $column;
 		}
 	}
@@ -157,14 +159,12 @@ if($column['name']=='areaId')
 		$s = substr($this->_columns,$this->_offset,1);
 
 		if($s=="'")
-			$ret = preg_match("/'[^\']*'/", $this->_columns, $matches, 0, $this->_offset);
+			$ret = preg_match("/\'(\\\'|[^'])*\'/", $this->_columns, $matches, 0, $this->_offset);
 		else if($s=="\"")
-			$ret = preg_match("/\".*\"/", $this->_columns, $matches, 0, $this->_offset);
+			$ret = preg_match("/\"(\\\"|[^\"])*\"/", $this->_columns, $matches, 0, $this->_offset);
 		else
 			return '';
 
-		#echo substr($this->_columns,$this->_offset,10);
-		#print_r($matches);
 		$this->_offset += strlen($matches[0]);
 
 		return $matches[0];
@@ -196,6 +196,9 @@ if($column['name']=='areaId')
 
 	public function popIndex($firstWord)
 	{
+		if(strcasecmp($firstWord,'PRIMARY')==0)
+			$this->_tmpname = 'PRIMARY';
+
 		$indexLine = $firstWord;
 		$this->skipBlank();
 		$s = substr($this->_columns, $this->_offset,1);
@@ -211,6 +214,7 @@ if($column['name']=='areaId')
 					break;
 				case '`':
 					$name = $this->popName();
+					$this->_tmpname = $name;
 					$indexLine .= '`'.$name.'`';
 					break;
 				case '(':
@@ -360,7 +364,22 @@ function parseOptions($line)
 	{
 		$ret = preg_match("/[ \t]*([a-zA-Z0-9]*)(=([a-zA-Z0-9]*))?/",$v,$matchoption);
 		if($ret){
-			if(isset($matchoption[3]))
+			if($matchoption[1]=='COMMENT')
+			{
+				$len = strlen($matchoption[0]);
+				$sub = substr($v,$len);
+				$s   = substr($v,$len,1);
+
+				if($s=="'")
+					$ret = preg_match("/\'(\\\'|[^'])*\'/", $v, $matches, 0, $len);
+				else if($s=="\"")
+					$ret = preg_match("/\"(\\\"|[^\"])*\"/", $v, $matches, 0, $len);
+				else
+					$ret = false ;
+
+				$oOption[$matchoption[1]] = $matches[0];
+			}
+			else if(isset($matchoption[3]))
 				$oOption[$matchoption[1]] = $matchoption[3];
 			else
 				$oOption[$matchoption[1]] = '';
@@ -380,7 +399,6 @@ function parseColumnsAndIndexes($line)
 	while(!$cp->isEnd())
 	{
 		$oC = $cp->popColumn();
-		print_r($oC);
 		if($oC['columnType']=='column')
 			$columns[] = $oC;
 		else
@@ -389,7 +407,6 @@ function parseColumnsAndIndexes($line)
 		$cp->skipCommas();		
 	}
 	
-	//print_r([$columns,$indexes]);
 	return [$columns,$indexes];
 }
 
@@ -399,13 +416,23 @@ function diffOneTable($aT, $bT)
 		return E_NotSameTable;
 
 	// 1. check columns
+	//$r = $bT->hasColumn('city');
+	foreach($bT['columns'] as $k=>$v)
+	{
 
+	}
+
+	foreach($aT['columns'] as $k=>$v)
+	{
+
+	}
+	
 	// 2. check indexes
 
 	// 3. check options
 
 
-	return $sql;
+	return '';
 }
 
 $leftFile  = $argv[1];
@@ -422,15 +449,23 @@ if(!$ltable){
 	return ;
 }
 $aT = parseCreateSql($ltable);
+#print_r($aT);
 
-/*
 $rtable = pickupOneTable($right);
 if(!$rtable){
 	print_r($rtable);
 	return ;
 }
 $bT = parseCreateSql($rtable);
-*/
+#print_r($bT);
+
+$ret = diffOneTable($aT,$bT);
+
+if($ret==E_NotSameTable)
+	echo "Not Same Table Name";
+else
+	print $ret;
+
 #checkSQLFile($left);
 #checkSQLFile($right);
 
