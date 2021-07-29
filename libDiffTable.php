@@ -1,6 +1,9 @@
 <?php
+define("E_AllSame", 0);
 define("E_NotSameTable", 1);
 #define(E_NotSameTable, 1);
+
+$debug = false;
 
 $oTable = [
 	"name"=>"",
@@ -45,7 +48,6 @@ class ColumnParser
 
 	public function popColumn()
 	{
-		$debug = false;
 		$this->_columnOption = [];
 
 		$column = ['name'=>'','dataType'=>'','options'=>'','columnType'=>'column'];
@@ -182,9 +184,23 @@ class ColumnParser
 		return false;
 	}
 
+	// 解析两端带括号的简单选项
 	public function popIndexOption()
 	{	
 		$ret = preg_match("/\([a-zA-Z0-9 `,]*\)/", $this->_columns, $matches, 0, $this->_offset);
+		if($ret)
+		{
+			$this->_offset += strlen($matches[0]);
+			return $matches[0];
+		}
+		else
+			return '';
+	}
+
+	// 解析括号嵌套的形式
+	public function parseKeyPart()
+	{
+		$ret = preg_match("/[a-zA-Z0-9 `]*(\([0-9,]*\))?/", $this->_columns, $matches, 0, $this->_offset);
 		if($ret)
 		{
 			$this->_offset += strlen($matches[0]);
@@ -203,6 +219,9 @@ class ColumnParser
 		$this->skipBlank();
 		$s = substr($this->_columns, $this->_offset,1);
 		$e = true;
+		$inKeypart = 0;
+		$keypart = [];
+
 		while($e)
 		{
 			switch($s)
@@ -218,8 +237,16 @@ class ColumnParser
 					$indexLine .= '`'.$name.'`';
 					break;
 				case '(':
-					$options = $this->popIndexOption();
-					$indexLine .= $options;
+					#$options = $this->popIndexOption();
+					$this->_offset+=1;
+					$inKeypart = 1;
+					$indexLine .= '(';
+					break;
+				case ')':
+					#$options = $this->popIndexOption();
+					$this->_offset+=1;
+					$inKeypart =0;
+					$indexLine .= ')';
 					break;
 				case ',':
 					$e=false;
@@ -231,6 +258,26 @@ class ColumnParser
 			}
 
 			$this->skipBlank();
+
+			if($inKeypart){
+				while($inKeypart){
+					$kp = $this->parseKeyPart();
+					if($kp){
+						$keypart[] = $kp;
+						$this->skipBlank();
+						$this->skipCommas();
+					}
+					else
+					{
+						$indexLine .= implode(',', $keypart);
+						$keypart=null;
+						$keypart=[];
+						$inKeypart=0;
+						break;
+					}
+				}
+			}
+
 			if($this->_offset>=$this->_max)
 				break;
 			$s = substr($this->_columns, $this->_offset,1);
@@ -245,16 +292,6 @@ class ColumnParser
 	}
 }
 
-class TableParser
-{
-	private $_name;
-	private $_string;
-	public function __contruct($name, $allString)
-	{
-		$this->_name = $name;
-	}
-
-}
 
 // 检查是否有不支持的SQL语句
 function checkSQLFile($fSQL)
@@ -396,17 +433,20 @@ function parseColumnsAndIndexes($line)
 
 	$cp = new ColumnParser($line);
 
+	$i=0;
 	while(!$cp->isEnd())
 	{
 		$oC = $cp->popColumn();
+
 		if($oC['columnType']=='column')
 			$columns[] = $oC;
 		else
 			$indexes[] = $oC;
 
 		$cp->skipCommas();		
+		$i++;
 	}
-	
+
 	return [$columns,$indexes];
 }
 
@@ -416,23 +456,129 @@ function diffOneTable($aT, $bT)
 		return E_NotSameTable;
 
 	// 1. check columns
-	//$r = $bT->hasColumn('city');
+	$alter = [];
+	$precol = '';
 	foreach($bT['columns'] as $k=>$v)
 	{
+		$bT['columns'][$k]['columnType'] = 'checking';
+		foreach($aT['columns'] as $kk=>$vv)
+		{
+			if($vv['name']==$v['name'])
+			{
+				$bT['columns'][$k]['columnType'] = 'found';
+				$aT['columns'][$kk]['columnType'] = 'found';
+				if($vv['dataType']==$v['dataType'] && $vv['options']==$v['options'])
+				{
+					// do nothing
+				}
+				else
+				{
+					//ALTER TABLE `person` CHANGE `birthday` `birthday1` DATE NOT NULL;
+					$alter[] = "MODIFY `". $v['name']."` ".$v['dataType'].' '.$v['options'];
+				}
+			}
+		}
+		if($bT['columns'][$k]['columnType'] == 'checking')
+		{
+			$alter[] = 'ADD `'.$v['name'].'` '.$v['dataType']. $v['options']. ' after `'. $precol."`";
+		}
 
+		$precol = $v['name'];
 	}
 
 	foreach($aT['columns'] as $k=>$v)
 	{
-
+		if($v['columnType']!='found')
+			$alter[] = 'DROP `'.$v['name'].'`';
 	}
 	
+	if(count($alter)>0)
+	{
+		echo 'Alter Table `',$bT['name'],"`\n";
+		foreach($alter as $k=>$v){
+			echo "\t",$v;
+			if(isset($alter[$k+1]))
+				echo ",\n";
+			else
+				echo ";\n";
+		}
+		echo "\n";
+	}
+
 	// 2. check indexes
 
 	// 3. check options
 
+	return E_AllSame;
+}
 
-	return '';
+function diffTables($left, $right)
+{
+	$ltable = pickupOneTable($left);
+	if(!$ltable){
+		print_r($ltable);
+		return ;
+	}
+
+	$aT = parseCreateSql($ltable);
+
+	$rtable = pickupOneTable($right);
+	if(!$rtable){
+		print_r($rtable);
+		return ;
+	}
+	$bT = parseCreateSql($rtable);
+
+	while(!feof($left))
+	{
+		#echo $aT['name'],":",$bT['name'],"\n";
+		if($aT['name']>$bT['name'])
+		{
+			$rtable = null;
+			$rtable = pickupOneTable($right);
+			if(!$rtable){
+				print_r($rtable);
+				return ;
+			}
+			$bT=null;
+			$bT = parseCreateSql($rtable);
+		}
+		else if($aT['name']<$bT['name'])
+		{
+			echo 'DROP table `'.$aT['name'],"`;\n";
+			$ltable=null;
+			$ltable = pickupOneTable($left);
+			if(!$ltable){
+				print_r($ltable);
+				return ;
+			}
+			$aT = null;
+			$aT = parseCreateSql($ltable);
+		} 
+		else
+		{
+			$ret = diffOneTable($aT,$bT);
+		
+			$ltable=null;
+			$ltable = pickupOneTable($left);
+			if(!$ltable){
+				print_r($ltable);
+				return ;
+			}
+			$aT=null;
+			$aT = parseCreateSql($ltable);
+
+			$rtable=null;
+			$rtable = pickupOneTable($right);
+			if(!$rtable){
+				print_r($rtable);
+				return ;
+			}
+			$bT=null;
+			$bT = parseCreateSql($rtable);
+		}
+	}
+
 }
 
 $leftFile  = $argv[1];
@@ -443,60 +589,37 @@ $right = fopen($rightFile,"r");
 
 $i = 0 ;
 
-$ltable = pickupOneTable($left);
-if(!$ltable){
-	print_r($ltable);
-	return ;
-}
-$aT = parseCreateSql($ltable);
-#print_r($aT);
-
-$rtable = pickupOneTable($right);
-if(!$rtable){
-	print_r($rtable);
-	return ;
-}
-$bT = parseCreateSql($rtable);
-#print_r($bT);
-
-$ret = diffOneTable($aT,$bT);
-
-if($ret==E_NotSameTable)
-	echo "Not Same Table Name";
-else
-	print $ret;
-
-#checkSQLFile($left);
-#checkSQLFile($right);
-
-/*
-while( !feof($left) || !feof($right) )
+if(true)
 {
-	$ret = diffOneTable($aT, $bT);
-
-	if($ret==E_NotSameTable)
-	{		
-		if($aT['name']<$bT['name'])
-		{
-			$ltable = pickupOneTable($left);
-			$aT = parseCreateSql($ltable);
-		}
-		else
-		{
-			$rtable = pickupOneTable($right);
-			$bT = parseCreateSql($rtable);
-		}
-	}
-	else
-	{
-		$ltable = pickupOneTable($left);
-		$aT = parseCreateSql($ltable);
-
-		$rtable = pickupOneTable($right);
-		$bT = parseCreateSql($ltable);
-	}
-	#$ret = parseCreateSql($ltable);
-	
-	//break;
+	diffTables($left,$right);	
 }
-*/
+else
+{
+	#$str = "UNIQUE KEY `username` (`username`(190),`enterpriseId`) USING BTREE";
+	#echo $str,"\n";
+	#$cp = new ColumnParser($str);
+	#$c = $cp->popColumn();
+	#print_r($c);
+	#die();
+
+	$ltable = pickupOneTable($left);
+	if(!$ltable){
+		print_r($ltable);
+		return ;
+	}
+	$aT = parseCreateSql($ltable);
+
+	$rtable = pickupOneTable($right);
+	if(!$rtable){
+		print_r($rtable);
+		return ;
+	}
+	$bT = parseCreateSql($rtable);
+
+	diffOneTable($aT,$bT);	
+}
+
+fclose($left);
+fclose($right);
+
+
