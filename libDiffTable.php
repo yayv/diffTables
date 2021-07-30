@@ -60,6 +60,7 @@ class ColumnParser
 			$column['options'] = $this->popIndex($column['name']);
 			$column['columnType']='index';
 			$column['name']=$this->_tmpname;
+
 			return $column;
 		}
 		else
@@ -315,25 +316,55 @@ function checkSQLFile($fSQL)
 	}
 }
 
+function getLine(&$fileOrString)
+{
+	if(is_string($fileOrString))
+	{
+		$p = strpos($fileOrString, chr(10));
+		if($p===false)
+			return false;
+		
+		$s = substr($fileOrString,0,$p);
 
-function pickupOneTable($file)
+		$fileOrString = substr($fileOrString,$p+1);
+		return $s;
+	}
+	else
+	{
+		return fgets($fileOrString);
+	}
+}
+
+function isEnd($fileOrString)
+{
+	if(is_string($fileOrString))
+	{
+		return false==substr($fileOrString,1,1);
+	}
+	else
+	{
+		return feof($fileOrString);
+	}
+}
+
+function pickupOneTable(&$file)
 {
 	$inCreate = false;
 
 	$str = "";
 	$line = '';
 
-	$line = fgets($file);
+	$line = getLine($file);
 
-	while( !$inCreate && !feof($file) )
+	while( !$inCreate && !isEnd($file) )
 	{
 		$ret = preg_match("/CREATE[ \t]*TABLE.*/", $line, $matches1);
 		if($ret){
 			$inCreate = true;
 			break;
 		}
-		$line = fgets($file);
-		if(feof($file))
+		$line = getLine($file);
+		if(isEnd($file))
 			return false;
 	}
 
@@ -349,7 +380,7 @@ function pickupOneTable($file)
 			return $str;
 		}
 
-		$line = fgets($file);
+		$line = getLine($file);
 	}
 
 	return $str;
@@ -436,6 +467,7 @@ function parseColumnsAndIndexes($line)
 	$i=0;
 	while(!$cp->isEnd())
 	{
+
 		$oC = $cp->popColumn();
 
 		if($oC['columnType']=='column')
@@ -445,7 +477,9 @@ function parseColumnsAndIndexes($line)
 
 		$cp->skipCommas();		
 		$i++;
+
 	}
+	$cp=null;
 
 	return [$columns,$indexes];
 }
@@ -494,15 +528,18 @@ function diffOneTable($aT, $bT)
 	
 	if(count($alter)>0)
 	{
-		echo 'Alter Table `',$bT['name'],"`\n";
+		$strAlter = '';
+		$strAlter .= 'Alter Table `'.$bT['name']."`\n";
 		foreach($alter as $k=>$v){
-			echo "\t",$v;
+			$strAlter .=  "\t".$v;
 			if(isset($alter[$k+1]))
-				echo ",\n";
+				$strAlter .=  ",\n";
 			else
-				echo ";\n";
+				$strAlter .=  ";\n";
 		}
-		echo "\n";
+		$strAlter .= "\n";
+
+		return $strAlter;
 	}
 
 	// 2. check indexes
@@ -558,7 +595,8 @@ function diffTables($left, $right)
 		else
 		{
 			$ret = diffOneTable($aT,$bT);
-		
+			echo $ret;
+
 			$ltable=null;
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
@@ -581,32 +619,15 @@ function diffTables($left, $right)
 
 }
 
-$leftFile  = $argv[1];
-$rightFile  = $argv[2];
-
-$left = fopen($leftFile,"r");
-$right = fopen($rightFile,"r");
-
-$i = 0 ;
-
-if(true)
+function diffTables_web($left, $right)
 {
-	diffTables($left,$right);	
-}
-else
-{
-	#$str = "UNIQUE KEY `username` (`username`(190),`enterpriseId`) USING BTREE";
-	#echo $str,"\n";
-	#$cp = new ColumnParser($str);
-	#$c = $cp->popColumn();
-	#print_r($c);
-	#die();
-
+	$allStr = '';
 	$ltable = pickupOneTable($left);
 	if(!$ltable){
 		print_r($ltable);
 		return ;
 	}
+
 	$aT = parseCreateSql($ltable);
 
 	$rtable = pickupOneTable($right);
@@ -616,10 +637,117 @@ else
 	}
 	$bT = parseCreateSql($rtable);
 
-	diffOneTable($aT,$bT);	
+	while(!isEnd($left))
+	{
+		if($aT['name']>$bT['name'])
+		{
+			$allStr .= $ltable;
+			$rtable = null;
+			$rtable = pickupOneTable($right);
+			if(!$rtable){
+				print_r($rtable);
+				break ;
+			}
+			$bT=null;
+			$bT = parseCreateSql($rtable);
+		}
+		else if($aT['name']<$bT['name'])
+		{
+			$allStr .= 'DROP table `'.$aT['name']."`;\n";
+			$ltable=null;
+			$ltable = pickupOneTable($left);
+			if(!$ltable){
+				print_r($ltable);
+				break ;
+			}
+			$aT = null;
+			$aT = parseCreateSql($ltable);
+		} 
+		else
+		{
+			$ret = diffOneTable($aT,$bT);
+			if(is_string($ret))
+				$allStr .= $ret;
+
+			$ltable=null;
+			$ltable = pickupOneTable($left);
+			if(!$ltable){
+				print_r($ltable);
+				break ;
+			}
+
+			$aT=null;
+			$aT = parseCreateSql($ltable);
+
+			$rtable=null;
+			$rtable = pickupOneTable($right);
+			if(!$rtable){
+				print_r($rtable);
+				break;
+			}
+			$bT=null;
+			$bT = parseCreateSql($rtable);
+		}
+	}
+
+	return $allStr;
 }
 
-fclose($left);
-fclose($right);
 
+function main(){
+	$leftFile  = $argv[1];
+	$rightFile  = $argv[2];
+
+	$left = fopen($leftFile,"r");
+	$right = fopen($rightFile,"r");
+
+	$i = 0 ;
+
+	if(true)
+	{
+		diffTables($left,$right);	
+	}
+	else
+	{
+		$ltable = pickupOneTable($left);
+		if(!$ltable){
+			print_r($ltable);
+			return ;
+		}
+		$aT = parseCreateSql($ltable);
+
+		$rtable = pickupOneTable($right);
+		if(!$rtable){
+			print_r($rtable);
+			return ;
+		}
+		$bT = parseCreateSql($rtable);
+
+		diffOneTable($aT,$bT);	
+	}
+
+	fclose($left);
+	fclose($right);
+}
+
+function web(){
+	$json = json_decode(file_get_contents("php://input"));
+
+	$left = $json->left;
+	$right = $json->right;
+	// for local debug
+	#global $argv;
+	#$left = file_get_contents($argv[1]);
+	#$right = file_get_contents($argv[2]);
+	
+	$result = diffTables_web($left,$right);	
+
+	header("Content-Type:application/json");
+	echo json_encode(["code"=>'ok','data'=>$result]);
+}
+
+if(isset($_SERVER['SHELL']))
+	main();
+else
+	web();
 

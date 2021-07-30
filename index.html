@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang=zh_CN>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script type="text/javascript">
+	function getModify()
+	{
+		let l = document.getElementById('left');
+		let r = document.getElementById('right');
+		let s = document.getElementById('result');
+		//console.log(l.innerHTML);
+		axios({
+		  method: 'post',
+		  url: '/libDiffTable.php',
+		  data: {
+		    left: l.value,
+		    right: r.value
+		  }
+		})
+		.then(function(response){
+			//console.log(response.data)
+			s.value = response.data.data;
+		});
+	}
+</script>
+<style>
+body{font-size: 14px;}
+.left {float: left;height: 300px;width: 49%;display: inline_block;}
+.right {float: left;height: 300px;width: 49%;display: inline_block;}
+.bottom{float: left;width: 99%;display: inline_block;}
+</style>
+</head>
+<body>
+<div class='left'>
+	<textarea id='left' style="width:100%;height:100%;"></textarea>
+</div>
+<div class='right'>
+	<textarea id='right' style="width:100%;height:100%;"></textarea>
+</div>
+<div class='bottom'>
+	<button style="float:left;width:50%;margin-left:25%;"  onclick='getModify()'>Generate Change Statments</button>
+	<textarea id='result' style='width:99%;height:280px;'></textarea>
+	<font style='color:red;'>注:1. 建表 SQL 请使用 mysqldump 导出的语句。2. 不同列名会被认为是两列，所以尽可能不要改列名，确实需要的修改列名时，请单独升级一次表结构 3.目前还没有把右表中新表的 Create Table 语句在结果中呈现出来 4. 不支持调整列顺序 5.目前还不支持索引的更新/重建 6.表的属性项目前不支持修改 7. 欢迎 email 沟通: yayv.cn(at)gmail.com</font>
+</div>
+</body>
+</html>
