@@ -571,7 +571,7 @@ function diffTables($left, $right)
 		#echo $aT['name'],":",$bT['name'],"\n";
 		if($aT['name']>$bT['name'])
 		{
-			echo $rtable,"\n";
+			echo $rtable,"\n\n";
 
 			$rtable = null;
 			$rtable = pickupOneTable($right);
@@ -584,7 +584,7 @@ function diffTables($left, $right)
 		}
 		else if($aT['name']<$bT['name'])
 		{
-			echo 'DROP table `'.$aT['name'],"`;\n";
+			echo 'DROP table `'.$aT['name'],"`;\n\n";
 			$ltable=null;
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
@@ -644,7 +644,7 @@ function diffTables_web($left, $right)
 	{
 		if($aT['name']>$bT['name'])
 		{
-			$allStr .= $rtable."\n";
+			$allStr .= $rtable."\n\n";
 			$rtable = null;
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
@@ -656,7 +656,7 @@ function diffTables_web($left, $right)
 		}
 		else if($aT['name']<$bT['name'])
 		{
-			$allStr .= 'DROP table `'.$aT['name']."`;\n";
+			$allStr .= 'DROP table `'.$aT['name']."`;\n\n";
 			$ltable=null;
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
@@ -734,15 +734,23 @@ function main(){
 	fclose($right);
 }
 
+function web_console(){
+	global $argv;
+	$left = file_get_contents($argv[1]);
+	$right = file_get_contents($argv[2]);
+	
+	$result = diffTables_web($left,$right);	
+
+	#header("Content-Type:application/json");
+	#echo json_encode(["code"=>'ok','data'=>$result]);
+	echo $result;
+}
+
 function web(){
 	$json = json_decode(file_get_contents("php://input"));
 
 	$left = $json->left;
 	$right = $json->right;
-	// for local debug
-	#global $argv;
-	#$left = file_get_contents($argv[1]);
-	#$right = file_get_contents($argv[2]);
 	
 	$result = diffTables_web($left,$right);	
 
