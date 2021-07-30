@@ -571,6 +571,8 @@ function diffTables($left, $right)
 		#echo $aT['name'],":",$bT['name'],"\n";
 		if($aT['name']>$bT['name'])
 		{
+			echo $rtable,"\n";
+
 			$rtable = null;
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
@@ -595,7 +597,8 @@ function diffTables($left, $right)
 		else
 		{
 			$ret = diffOneTable($aT,$bT);
-			echo $ret;
+			if(is_string($ret))
+				echo $ret;
 
 			$ltable=null;
 			$ltable = pickupOneTable($left);
@@ -641,7 +644,7 @@ function diffTables_web($left, $right)
 	{
 		if($aT['name']>$bT['name'])
 		{
-			$allStr .= $ltable;
+			$allStr .= $rtable."\n";
 			$rtable = null;
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
@@ -695,6 +698,7 @@ function diffTables_web($left, $right)
 
 
 function main(){
+	global $argv;
 	$leftFile  = $argv[1];
 	$rightFile  = $argv[2];
 
