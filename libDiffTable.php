@@ -552,21 +552,14 @@ function diffOneTable($aT, $bT)
 function diffTables($left, $right)
 {
 	$ltable = pickupOneTable($left);
-	if(!$ltable){
-		print_r($ltable);
-		return ;
-	}
-
-	$aT = parseCreateSql($ltable);
+	if($ltable)
+		$aT = parseCreateSql($ltable);
 
 	$rtable = pickupOneTable($right);
-	if(!$rtable){
-		print_r($rtable);
-		return ;
-	}
-	$bT = parseCreateSql($rtable);
+	if($rtable)
+		$bT = parseCreateSql($rtable);
 
-	while(!feof($left))
+	while(!feof($left) && !feof($right))
 	{
 		#echo $aT['name'],":",$bT['name'],"\n";
 		if($aT['name']>$bT['name'])
@@ -574,24 +567,24 @@ function diffTables($left, $right)
 			echo $rtable,"\n\n";
 
 			$rtable = null;
+			$bT=null;
+
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
-				print_r($rtable);
-				return ;
+				break;
 			}
-			$bT=null;
 			$bT = parseCreateSql($rtable);
 		}
 		else if($aT['name']<$bT['name'])
 		{
 			echo 'DROP table `'.$aT['name'],"`;\n\n";
 			$ltable=null;
+			$aT = null;
+
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
-				print_r($ltable);
-				return ;
+				break;
 			}
-			$aT = null;
 			$aT = parseCreateSql($ltable);
 		} 
 		else
@@ -601,23 +594,48 @@ function diffTables($left, $right)
 				echo $ret;
 
 			$ltable=null;
+			$aT=null;
+
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
-				print_r($ltable);
-				return ;
+				break;
 			}
-			$aT=null;
 			$aT = parseCreateSql($ltable);
 
 			$rtable=null;
+			$bT=null;
+
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
-				print_r($rtable);
-				return ;
+				break;
 			}
-			$bT=null;
 			$bT = parseCreateSql($rtable);
 		}
+	}
+
+	if($ltable && $aT)
+	{
+		echo 'DROP table `'.$aT['name']."`;\n\n";
+	}
+
+	if($rtable && $bT)
+		echo  $rtable."\n\n";
+
+	while(!isEnd($left))
+	{
+		$ltable = pickupOneTable($left);
+		if(!$ltable)
+			break;
+		$aT = parseCreateSql($ltable);
+		echo 'DROP table `'.$aT['name']."`;\n\n";
+	}
+
+	while(!isEnd($right))
+	{
+		$rtable = pickupOneTable($right);
+		if(!$rtable)
+			break;
+		echo $rtable."\n\n";
 	}
 
 }
