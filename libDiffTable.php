@@ -626,44 +626,37 @@ function diffTables_web($left, $right)
 {
 	$allStr = '';
 	$ltable = pickupOneTable($left);
-	if(!$ltable){
-		print_r($ltable);
-		return ;
-	}
-
-	$aT = parseCreateSql($ltable);
+	if($ltable)
+		$aT = parseCreateSql($ltable);
 
 	$rtable = pickupOneTable($right);
-	if(!$rtable){
-		print_r($rtable);
-		return ;
-	}
-	$bT = parseCreateSql($rtable);
+	if($rtable)
+		$bT = parseCreateSql($rtable);
 
-	while(!isEnd($left))
+	while( !isEnd($left) && !isEnd($right) )
 	{
 		if($aT['name']>$bT['name'])
 		{
 			$allStr .= $rtable."\n\n";
 			$rtable = null;
+			$bT=null;
+
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
-				print_r($rtable);
 				break ;
 			}
-			$bT=null;
 			$bT = parseCreateSql($rtable);
 		}
 		else if($aT['name']<$bT['name'])
 		{
 			$allStr .= 'DROP table `'.$aT['name']."`;\n\n";
 			$ltable=null;
+			$aT = null;
+
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
-				print_r($ltable);
 				break ;
 			}
-			$aT = null;
 			$aT = parseCreateSql($ltable);
 		} 
 		else
@@ -673,24 +666,47 @@ function diffTables_web($left, $right)
 				$allStr .= $ret;
 
 			$ltable=null;
+			$aT=null;
+
 			$ltable = pickupOneTable($left);
 			if(!$ltable){
-				print_r($ltable);
 				break ;
 			}
-
-			$aT=null;
 			$aT = parseCreateSql($ltable);
 
 			$rtable=null;
+			$bT=null;
 			$rtable = pickupOneTable($right);
 			if(!$rtable){
-				print_r($rtable);
 				break;
 			}
-			$bT=null;
 			$bT = parseCreateSql($rtable);
 		}
+	}
+
+	if($ltable && $aT)
+	{
+		$allStr .= 'DROP table `'.$aT['name']."`;\n\n";
+	}
+
+	if($rtable && $bT)
+		$allStr .= $rtable."\n\n";
+
+	while(!isEnd($left))
+	{
+		$ltable = pickupOneTable($left);
+		if(!$ltable)
+			break;
+		$aT = parseCreateSql($ltable);
+		$allStr .= 'DROP table `'.$aT['name']."`;\n\n";
+	}
+
+	while(!isEnd($right))
+	{
+		$rtable = pickupOneTable($right);
+		if(!$rtable)
+			break;
+		$allStr .= $rtable."\n\n";
 	}
 
 	return $allStr;
