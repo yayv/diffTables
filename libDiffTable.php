@@ -18,6 +18,8 @@ class ColumnParser
 	private $_offset ;
 	private $_max ;
 	private $_debug;
+	private $_KEY;
+	private $_tmpname;
 
 	private $_columnOption;
 

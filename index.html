@@ -2,7 +2,7 @@
 <html lang=zh_CN>
 <head>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="axios.min.js"></script>
 <script type="text/javascript">
 	function getModify()
 	{
@@ -12,7 +12,7 @@
 		//console.log(l.innerHTML);
 		axios({
 		  method: 'post',
-		  url: '/libDiffTable.php',
+		  url: 'libDiffTable.php',
 		  data: {
 		    left: l.value,
 		    right: r.value
